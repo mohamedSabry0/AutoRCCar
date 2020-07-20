@@ -1,5 +1,8 @@
+import io
 import socket
-import subprocess
+import struct
+from PIL import Image
+import cv2
 
 # Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
 # all interfaces)
@@ -10,19 +13,24 @@ server_socket.listen(0)
 # Accept a single connection and make a file-like object out of it
 connection = server_socket.accept()[0].makefile('rb')
 try:
-    # Run a viewer with an appropriate command line. Uncomment the mplayer
-    # version if you would prefer to use mplayer instead of VLC
-    # cmdline = ['vlc', '--demux', 'h264', '-']
-    cmdline = ['mplayer', '-fps', '25', '-cache', '1024', '-']
-    player = subprocess.Popen(cmdline, stdin=subprocess.PIPE)
     while True:
-        # Repeatedly read 1k of data from the connection and write it to
-        # the media player's stdin
-        data = connection.read(1024)
-        if not data:
+        # Read the length of the image as a 32-bit unsigned int. If the
+        # length is zero, quit the loop
+        image_len = struct.unpack('<L', connection.read(struct.calcsize('<L')))[0]
+        if not image_len:
             break
-        player.stdin.write(data)
+        # Construct a stream to hold the image data and read the image
+        # data from the connection
+        image_stream = io.BytesIO()
+        image_stream.write(connection.read(image_len))
+        # Rewind the stream, open it as an image with PIL and do some
+        # processing on it
+        image_stream.seek(0)
+        image = Image.open(image_stream)
+        
+        print('Image is %dx%d' % image.size)
+        image.verify()
+        print('Image is verified')
 finally:
     connection.close()
     server_socket.close()
-    player.terminate()
